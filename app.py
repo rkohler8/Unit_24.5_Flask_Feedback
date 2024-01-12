@@ -3,6 +3,7 @@ from flask_debugtoolbar import DebugToolbarExtension
 from models import connect_db, db, User, Feedback
 from forms import RegisterForm, LoginForm, DeleteForm, FeedbackForm
 from sqlalchemy.exc import IntegrityError
+from werkzeug.exceptions import Unauthorized
 
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = "postgresql:///flask_feedback"
@@ -36,7 +37,7 @@ def register():
    """Register user: produce form & handle form submission."""
 
    if "username" in session:
-      flash(f"{session['username']} Already Logged In!")
+      flash(f"{session['username']} Already Registered!", "info")
       return redirect(f"/users/{session['username']}")
 
    form = RegisterForm()
@@ -76,12 +77,11 @@ def login():
    """Produce login form or handle login."""
    
    if "username" in session:
-      flash(f"{session['username']} Already Logged In!")
+      flash(f"{session['username']} Already Logged In!", "info")
       return redirect(f"/users/{session['username']}")
 
    form = LoginForm()
    # return redirect("/secret")
-
 
    if form.validate_on_submit():
       username = form.username.data
@@ -91,7 +91,7 @@ def login():
       user = User.authenticate(username, pwd)
 
       if user:
-         flash(f"Welcome Back, {user.username}!")
+         flash(f"Welcome Back, {user.username}!", "info")
          session["username"] = user.username  # keep logged in
          return redirect(f"/users/{user.username}")
 
@@ -119,7 +119,9 @@ def show_user(username):
    """Direct to User page and populate with current user information."""
 
    if "username" not in session or username != session['username']:
+      flash("You don't have permission to do that", "warning")
       return redirect(f"/users/{session['username']}")
+      # raise Unauthorized()
 
    user = User.query.get(username)
    form = DeleteForm()
@@ -134,7 +136,7 @@ def show_user(username):
 def logout_user():
    """Log current user out of session."""
 
-   flash("Logged Out!")
+   flash("Logged Out!", "success")
    session.pop('username')
    return redirect("/")
 
@@ -147,6 +149,19 @@ def logout_user():
 def delete_user(username):
    """Delete User"""
 
+   if "username" not in session  or username != session['username']:
+      # flash("Please login first!", "danger")
+      flash("You don't have permission to do that", "warning")
+      return redirect("/")
+      # raise Unauthorized()
+   
+   user = User.query.get_or_404(username)
+
+   db.session.delete(user)
+   db.session.commit()
+   session.pop('username')
+
+   flash(f"User '{username}' Deleted!", "warning")
 
    return redirect("/login")
 
@@ -159,9 +174,11 @@ def delete_user(username):
 def add_feedback(username):
    """Add Feedback"""
 
-   if "username" not in session:
-      flash("Please login first!")
+   if "username" not in session or username != session['username']:
+      # flash("Please login first!", "danger")
+      flash("You don't have permission to do that", "warning")
       return redirect("/")
+      # raise Unauthorized()
    
    form = FeedbackForm()
 
@@ -173,6 +190,8 @@ def add_feedback(username):
 
       db.session.add(new_feedback)
       db.session.commit()
+
+      flash(f"Feedback '{new_feedback.title}' Added!", "info")
 
       return redirect(f"/users/{username}")
    else:
@@ -187,11 +206,13 @@ def add_feedback(username):
 def update_feedback(feedback_id):
    """Update Feedback"""
 
-   if "username" not in session:
-      flash("Please login first!")
-      return redirect("/")
-   
    feedback = Feedback.query.get_or_404(feedback_id)
+
+   if "username" not in session or feedback.username != session['username']:
+      # flash("Please login first!", "danger")
+      flash("You don't have permission to do that", "warning")
+      return redirect("/")
+      # raise Unauthorized()
 
    form = FeedbackForm(obj=feedback)
 
@@ -201,8 +222,9 @@ def update_feedback(feedback_id):
 
       db.session.commit()
 
-      return redirect(f"/users/{feedback.username}")
+      flash(f"Feedback '{feedback.title}' Updated!", "success")
 
+      return redirect(f"/users/{feedback.username}")
 
    return render_template("/feedback/edit.html", form=form, feedback=feedback)
 
@@ -213,11 +235,13 @@ def update_feedback(feedback_id):
 def delete_feedback(feedback_id):
    """Delete Feedback"""
    
-   if "username" not in session:
-      flash("Please login first!")
-      return redirect("/")
-   
    feedback = Feedback.query.get_or_404(feedback_id)
+
+   if "username" not in session  or feedback.username != session['username']:
+      # flash("Please login first!", "danger")
+      flash("You don't have permission to do that", "warning")
+      return redirect("/")
+      # raise Unauthorized()
    
    form = DeleteForm()
 
@@ -225,6 +249,6 @@ def delete_feedback(feedback_id):
       db.session.delete(feedback)
       db.session.commit()
 
-   flash(f"Feedback '{feedback.title}' Deleted!")
+   flash(f"Feedback '{feedback.title}' Deleted!", "warning")
 
    return redirect(f"/users/{feedback.username}")
